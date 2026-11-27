@@ -173,3 +173,71 @@ export const OFFLINE_RISK_GUIDES = [
     ],
   },
 ];
+
+export interface DeviceLogGuideItem {
+  id: string;
+  device: string;
+  format: string;
+  steps: string[];
+  commandOrPath?: string;
+  note: string;
+}
+
+export const DEVICE_LOG_GUIDES: DeviceLogGuideItem[] = [
+  {
+    id: 'windows',
+    device: 'Windows 電腦',
+    format: '.log / .json / .txt',
+    commandOrPath: 'C:\\Windows\\System32\\LogFiles\\Firewall\\pfirewall.log',
+    steps: [
+      '開啟「進階安全性的 Windows Defender 防火牆」→「內容」→「自訂記錄」，啟用記錄已捨棄的封包與成功連線後，即可取得 pfirewall.log。',
+      '若只要分析瀏覽器網路請求，可在 Chrome / Edge 開啟 chrome://net-export/ 匯出 JSON，或按 F12 → Network 檢查可疑請求網址。',
+    ],
+    note: '若找不到 pfirewall.log，代表系統預設尚未開啟防火牆寫檔記錄，啟用後即會自動產生。',
+  },
+  {
+    id: 'macos',
+    device: 'macOS 電腦',
+    format: '.log / .txt',
+    commandOrPath: 'log show --last 1h --style syslog > ~/Desktop/mac-network.log',
+    steps: [
+      '開啟「終端機 (Terminal)」執行上方指令，即可把近 1 小時網路與 DNS 系統紀錄匯出至桌面。',
+      '或開啟內建「系統主控台 (Console.app)」，篩選 mDNSResponder 或異常背景程序後匯出文字檔。',
+    ],
+    note: '若檔案超過 500 KB，建議將 --last 1h 改為 --last 15m 或使用 tail -n 500 擷取近期區段。',
+  },
+  {
+    id: 'ios',
+    device: 'iPhone / iPad (iOS)',
+    format: '.ndjson（免電腦）',
+    commandOrPath: '設定 → 隱私權與安全性 → App 隱私權報告 → 輸出 App 隱私權報告',
+    steps: [
+      '先至「設定 → 隱私權與安全性」開啟「App 隱私權報告」，手機即會記錄各 App 連線的網域清單。',
+      '捲動至報告最下方點選「輸出 App 隱私權報告」，儲存產生的 .ndjson 檔案並直接上傳至本分析器。',
+    ],
+    note: 'AegisFlow 已原生支援 iOS .ndjson 裡的 domain 欄位解析，可迅速抓出異常外連與高熵 DGA 網域。',
+  },
+  {
+    id: 'android',
+    device: 'Android 手機 / 平板',
+    format: '.csv / .log',
+    commandOrPath: '私人 DNS 後台匯出紀錄 或 chrome://inspect',
+    steps: [
+      '未取得 Root 權限時，一般 App 無法直接側錄他程式封包；建議在系統「私人 DNS」搭配 NextDNS 或 AdGuard DNS，從管理後台匯出 .csv / .log 查詢紀錄。',
+      '若需檢查手機網頁瀏覽連線，可用 USB 連接電腦並於桌面 Chrome 開啟 chrome://inspect 側錄分頁請求。',
+    ],
+    note: '切勿下載來源不明的「免 Root 全域抓包 APK」，該類程式本身常帶有高風險憑證竊聽隱憂。',
+  },
+  {
+    id: 'linux-router',
+    device: 'Linux 主機與家用路由器',
+    format: '.log / .txt',
+    commandOrPath: 'tail -n 500 /var/log/nginx/access.log',
+    steps: [
+      '家用路由器：登入閘道管理頁面（常見 192.168.0.1 或 192.168.1.1）→「系統日誌 / 防火牆日誌」匯出 .txt 或 .log。',
+      'Linux / Web 主機：擷取 /var/log/nginx/access.log、/var/log/ufw.log 或 /var/log/auth.log 的近期紀錄上傳，或直接串接 POST /api/v1/logs/analyze-raw。',
+    ],
+    note: '路由器日誌能涵蓋家中所有手機、智慧家電與電腦的對外阻擋紀錄，是最有效的總出口觀測點。',
+  },
+];
+

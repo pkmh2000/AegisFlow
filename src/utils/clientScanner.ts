@@ -216,9 +216,10 @@ export function scanWalletLocally(
   dappUrl: string,
   contractAddress: string,
   methodSignature: string,
-  calldata: string
+  calldata: string,
+  platform: PlatformSource = 'Browser'
 ): { result: WalletScanResult; logEntry: ThreatLogEntry } {
-  const { result: urlCheck } = scanUrlLocally(dappUrl, 'Browser');
+  const { result: urlCheck } = scanUrlLocally(dappUrl, platform);
   const cleanContract = contractAddress.trim();
   const cleanMethod = methodSignature.trim();
   const cleanData = calldata.trim().toLowerCase();
@@ -288,7 +289,7 @@ export function scanWalletLocally(
       category: verdict === 'allow' ? 'safe' : 'wallet_drainer',
       severity,
       action: verdict === 'block' ? 'blocked' : verdict === 'warn' ? 'quarantined' : 'allowed',
-      platform: 'Browser',
+      platform,
       sourceIp: geoNode.ip,
       asn: geoNode.asn,
       geo: geoNode.geo,

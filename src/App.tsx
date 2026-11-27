@@ -6,6 +6,7 @@ import {
   BookOpen,
   Code2,
   HardDrive,
+  HelpCircle,
   LayoutDashboard,
   Lock,
   Menu,
@@ -20,7 +21,7 @@ import {
 import { AlertCenterDrawer } from './components/AlertCenterDrawer';
 import { BackupVaultView } from './components/BackupVaultView';
 import { DashboardView } from './components/DashboardView';
-import { DrillsGuidesView } from './components/DrillsGuidesView';
+import { DrillsGuidesView, type GuidesSectionId } from './components/DrillsGuidesView';
 import { LogAnalyzerView } from './components/LogAnalyzerView';
 import { OpenApiSettingsView } from './components/OpenApiSettingsView';
 import { PWAInstallButton } from './components/PWAInstallButton';
@@ -55,7 +56,7 @@ const NAV_ITEMS: {
   { id: 'logs', label: '深度日誌與溯源', shortLabel: '日誌', Icon: Activity },
   { id: 'zerotrust', label: '零信任存取控管', shortLabel: '零信任', Icon: Lock },
   { id: 'backup', label: '抗勒索加密備份', shortLabel: '備份', Icon: HardDrive },
-  { id: 'drills', label: '資安演練與指南', shortLabel: '演練', Icon: BookOpen },
+  { id: 'drills', label: '操作說明與演練', shortLabel: '說明', Icon: BookOpen },
   { id: 'api', label: '開源 API 與設定', shortLabel: '設定', Icon: Code2 },
 ];
 
@@ -63,6 +64,7 @@ export default function App() {
   const { isOnline, networkOnline, simulatedOffline, setSimulatedOffline } = useOnlineStatus();
 
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [guidesSection, setGuidesSection] = useState<GuidesSectionId>('guide');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
 
@@ -224,6 +226,20 @@ export default function App() {
     (entry: ThreatLogEntry) => {
       setLogs((prev) => {
         const updated = [entry, ...prev].slice(0, 200);
+        if (settings.offlineCacheEnabled) offlineStore.saveLogs(updated);
+        return updated;
+      });
+    },
+    [settings.offlineCacheEnabled]
+  );
+
+  const handleBatchAddLocalLogs = useCallback(
+    (entries: ThreatLogEntry[]) => {
+      if (entries.length === 0) return;
+      setLogs((prev) => {
+        const existingIds = new Set(prev.map((l) => l.id));
+        const fresh = entries.filter((e) => !existingIds.has(e.id));
+        const updated = [...fresh, ...prev].slice(0, 200);
         if (settings.offlineCacheEnabled) offlineStore.saveLogs(updated);
         return updated;
       });
@@ -553,6 +569,19 @@ export default function App() {
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
+              onClick={() => {
+                setGuidesSection('guide');
+                setActiveTab('drills');
+              }}
+              aria-label="開啟各項功能說明與操作手冊"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <HelpCircle className="h-4 w-4 text-slate-600 dark:text-slate-300" aria-hidden="true" />
+              <span className="hidden md:inline">功能說明</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setAlertDrawerOpen(true)}
               aria-label={`開啟即時警報通知中心，目前 ${unreadAlertCount} 則未讀`}
               className="relative inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
@@ -716,6 +745,10 @@ export default function App() {
           {activeTab === 'scanner' && (
             <ScannerView
               initialUrl={quickScanUrl}
+              selectedPlatform={settings.defaultPlatform}
+              onSelectPlatform={(defaultPlatform) =>
+                handleUpdateSettings({ ...settings, defaultPlatform })
+              }
               isOnline={isOnline}
               onScanComplete={refreshServerData}
               onAddLocalLog={handleAddLocalLog}
@@ -727,8 +760,11 @@ export default function App() {
             <LogAnalyzerView
               logs={logs}
               selectedLog={selectedLog}
+              selectedPlatform={settings.defaultPlatform}
               onSelectLog={setSelectedLog}
               onUpdateLogRemediation={handleUpdateLogRemediation}
+              onRefreshLogs={refreshServerData}
+              onBatchAddLocalLogs={handleBatchAddLocalLogs}
               alertChannels={alertChannels}
               isOnline={isOnline}
               onNotifyToast={triggerToast}
@@ -770,6 +806,8 @@ export default function App() {
                 setDrillScores({});
                 offlineStore.saveDrillScores({});
               }}
+              activeSection={guidesSection}
+              onChangeSection={setGuidesSection}
             />
           )}
 

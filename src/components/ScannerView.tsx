@@ -5,7 +5,9 @@ import {
   Cpu,
   Globe,
   Loader2,
+  Lock,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Wallet,
 } from 'lucide-react';
@@ -15,6 +17,8 @@ import { getCategoryLabel, SeverityText } from './SeverityLabel';
 
 interface ScannerViewProps {
   initialUrl?: string;
+  selectedPlatform: PlatformSource;
+  onSelectPlatform: (platform: PlatformSource) => void;
   isOnline: boolean;
   onScanComplete: () => void;
   onAddLocalLog?: (entry: ThreatLogEntry) => void;
@@ -28,6 +32,8 @@ interface ScannerViewProps {
 
 export const ScannerView: React.FC<ScannerViewProps> = ({
   initialUrl = '',
+  selectedPlatform,
+  onSelectPlatform,
   isOnline,
   onScanComplete,
   onAddLocalLog,
@@ -37,7 +43,6 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
 
   // URL scanner state
   const [urlInput, setUrlInput] = useState(initialUrl);
-  const [platform, setPlatform] = useState('Browser');
   const [deepAi, setDeepAi] = useState(true);
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState('');
@@ -73,7 +78,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
         const resp = await fetch('/api/v1/scan/url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: urlToScan, platform, deepAi }),
+          body: JSON.stringify({ url: urlToScan, platform: selectedPlatform, deepAi }),
         });
         const contentType = resp.headers.get('content-type') || '';
         if (resp.status !== 404 && contentType.includes('application/json')) {
@@ -96,7 +101,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
       }
 
       // Static-host (GitHub Pages) or offline local ML fallback
-      const { result, logEntry } = scanUrlLocally(urlToScan, platform as PlatformSource);
+      const { result, logEntry } = scanUrlLocally(urlToScan, selectedPlatform);
       setUrlResult(result);
       onAddLocalLog?.(logEntry);
       if (result.verdict === 'block' || result.verdict === 'warn') {
@@ -127,7 +132,13 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
         const resp = await fetch('/api/v1/scan/wallet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dappUrl, contractAddress, methodSignature, calldata }),
+          body: JSON.stringify({
+            dappUrl,
+            contractAddress,
+            methodSignature,
+            calldata,
+            platform: selectedPlatform,
+          }),
         });
         const contentType = resp.headers.get('content-type') || '';
         if (resp.status !== 404 && contentType.includes('application/json')) {
@@ -150,7 +161,13 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
       }
 
       // Static-host (GitHub Pages) or offline local Web3 ABI fallback
-      const { result, logEntry } = scanWalletLocally(dappUrl, contractAddress, methodSignature, calldata);
+      const { result, logEntry } = scanWalletLocally(
+        dappUrl,
+        contractAddress,
+        methodSignature,
+        calldata,
+        selectedPlatform
+      );
       setWalletResult(result);
       onAddLocalLog?.(logEntry);
       if (result.verdict === 'block' || result.verdict === 'warn') {
@@ -232,16 +249,17 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label htmlFor="platform-select" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                  監控端點平台
+                <label htmlFor="platform-select" className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                  <Lock className="h-3 w-3 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                  <span>監控端點平台 (已鎖定固定)</span>
                 </label>
                 <select
                   id="platform-select"
-                  value={platform}
-                  onChange={(e) => setPlatform(e.target.value)}
+                  value={selectedPlatform}
+                  onChange={(e) => onSelectPlatform(e.target.value as PlatformSource)}
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 >
-                  <option value="Browser">桌機瀏覽器擴充</option>
+                  <option value="Browser">桌機瀏覽器擴充 (Browser)</option>
                   <option value="Windows">Windows 端點</option>
                   <option value="macOS">macOS 端點</option>
                   <option value="iOS">iOS PWA 防護</option>
@@ -261,6 +279,10 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </div>
             </div>
 
+            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+              平台選擇將自動記憶並套用於後續 URL 與錢包掃描（切換分頁或重整皆保持固定）。
+            </div>
+
             {urlError && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                 {urlError}
@@ -276,6 +298,13 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               {urlLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cpu className="h-4 w-4" />}
               <span>{urlLoading ? '正在萃取流量特徵與 AI 研判...' : '執行即時分析與自動攔截判定'}</span>
             </button>
+
+            <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2.5 text-[11px] leading-relaxed text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/25 dark:text-emerald-200">
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+              <span>
+                靜態沙箱安全保證：貼上連結僅在本機或後端進行字串語法、熵值特徵與 AI 語意解析，絕不會實際造訪該網址或下載檔案，不會造成木馬與釣魚侵入。
+              </span>
+            </div>
           </section>
 
           <section className="lg:col-span-7 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -470,6 +499,16 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               />
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-950">
+              <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                <Lock className="h-3 w-3 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                <span>目前固定監控平台：</span>
+              </span>
+              <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
+                {selectedPlatform}
+              </span>
+            </div>
+
             {walletError && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                 {walletError}
@@ -484,6 +523,13 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               {walletLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
               <span>{walletLoading ? '正在解析合約授權風險...' : '驗證錢包簽名安全'}</span>
             </button>
+
+            <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2.5 text-[11px] leading-relaxed text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/25 dark:text-emerald-200">
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+              <span>
+                純靜態合約審計：僅解析您貼上的 dApp 網址、合約地址與 Calldata 簽名方法，絕不會主動觸發錢包彈窗或送出鏈上交易。
+              </span>
+            </div>
           </form>
 
           <section className="lg:col-span-7 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">

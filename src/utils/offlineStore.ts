@@ -20,6 +20,7 @@ const KEYS = {
 
 export const DEFAULT_SETTINGS: ProtectionSettings = {
   preset: 'strict_zerotrust',
+  defaultPlatform: 'Browser',
   autoBlockMaliciousLinks: true,
   mlTrafficInspection: true,
   walletSignatureGuard: true,

@@ -7,6 +7,8 @@ import net from 'net';
 import { monitorEventLoopDelay } from 'perf_hooks';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
+import type { PlatformSource } from './src/types/security';
+import { analyzeRawNetworkLogs } from './src/utils/networkLogAnalyzer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -718,10 +720,18 @@ async function createServer() {
 
   // 4. Crypto Wallet dApp & Signature Guard
   app.post('/api/v1/scan/wallet', async (req, res) => {
-    const { dappUrl, contractAddress = '', methodSignature = 'approve', calldata = '' } = req.body || {};
+    const {
+      dappUrl,
+      contractAddress = '',
+      methodSignature = 'approve',
+      calldata = '',
+      platform = 'Browser',
+    } = req.body || {};
     if (typeof dappUrl !== 'string' || dappUrl.trim().length === 0) {
       return res.status(400).json({ error: '請提供 dApp 來源網址。' });
     }
+    const allowedPlatforms = new Set(['Windows', 'macOS', 'iOS', 'Android', 'Browser', 'API']);
+    const normalizedPlatform = allowedPlatforms.has(String(platform)) ? String(platform) : 'Browser';
 
     const urlCheck = extractUrlFeatures(dappUrl);
     if (!urlCheck) {
@@ -820,7 +830,7 @@ async function createServer() {
       category: verdict === 'allow' ? 'safe' : 'wallet_drainer',
       severity,
       action: verdict === 'block' ? 'blocked' : verdict === 'warn' ? 'quarantined' : 'allowed',
-      platform: 'Browser',
+      platform: normalizedPlatform,
       sourceIp: walletGeo.ip,
       asn: walletGeo.asn,
       geo: walletGeo.geo,
@@ -979,6 +989,88 @@ async function createServer() {
       read: false,
     });
     return res.status(201).json(entry);
+  });
+
+  app.post('/api/v1/logs/analyze-raw', async (req, res) => {
+    const { rawLog, platform = 'Browser', deepAi = true } = req.body || {};
+    if (typeof rawLog !== 'string' || !rawLog.trim()) {
+      return res.status(400).json({ error: '請貼上或上傳欲分析的網路日誌內容。' });
+    }
+    if (rawLog.length > 500_000) {
+      return res.status(400).json({ error: '單次日誌內容請勿超過 500 KB。' });
+    }
+
+    const allowedPlatforms = new Set<PlatformSource>(['Windows', 'macOS', 'iOS', 'Android', 'Browser', 'API']);
+    const normalizedPlatform: PlatformSource = allowedPlatforms.has(platform as PlatformSource)
+      ? (platform as PlatformSource)
+      : 'Browser';
+
+    const analysis = analyzeRawNetworkLogs(rawLog, normalizedPlatform, 40);
+
+    // Push ingested malicious logs into circular buffer in reverse order so highest severity ends near top
+    for (let i = analysis.ingestedLogs.length - 1; i >= 0; i--) {
+      const item = analysis.ingestedLogs[i];
+      pushThreatLog({
+        ...item,
+        geo: item.geo || inferGeoNode(item.sourceIp).geo,
+      });
+    }
+
+    if (analysis.maliciousCount > 0) {
+      const topFinding = analysis.findings[0];
+      broadcastRealtimeAlert({
+        id: `alt-${crypto.randomInt(10000, 99999)}`,
+        logId: topFinding?.logId,
+        timestamp: analysis.analyzedAt,
+        title: `網路日誌偵測到 ${analysis.maliciousCount} 筆惡意行徑`,
+        message: `主要攻擊行為：${topFinding?.attackType ?? '異常存取'}（來源 ${topFinding?.sourceIp ?? '未知'}）`,
+        severity: topFinding?.severity ?? 'high',
+        target: topFinding?.target,
+        sourceIp: topFinding?.sourceIp,
+        channels: ['BrowserPush'],
+        read: false,
+      });
+    }
+
+    if (deepAi && analysis.maliciousCount > 0) {
+      const ai = getGeminiClient();
+      if (ai) {
+        try {
+          const excerpts = analysis.findings
+            .slice(0, 12)
+            .map((f) => `[Line ${f.lineNumber} | ${f.severity} | ${f.sourceIp}] ${f.attackType}: ${f.rawLine}`)
+            .join('\n');
+          const aiResp = await ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents: `分析以下網路日誌中偵測到的可疑／惡意行徑（格式：${analysis.detectedFormat}，共掃描 ${analysis.totalLines} 行，命中 ${analysis.maliciousCount} 筆）：\n${excerpts}`,
+            config: {
+              systemInstruction:
+                '你是專業藍隊資安分析師 (SOC Analyst)。請用繁體中文彙整攻擊總覽、推測攻擊鏈（偵察 -> 試探 -> 入侵／滲透），並給出立即可套用的防火牆 / WAF / DNS 封鎖規則。',
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  incidentOverview: { type: Type.STRING },
+                  attackChain: { type: Type.STRING },
+                  recommendedBlockRules: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                },
+                required: ['incidentOverview', 'attackChain', 'recommendedBlockRules'],
+              },
+            },
+          });
+          analysis.aiSummary = JSON.parse((aiResp.text ?? '{}').trim());
+        } catch (err) {
+          analysis.aiError = err instanceof Error ? err.message : 'Gemini AI 日誌關聯分析失敗';
+        }
+      } else {
+        analysis.aiError = '未設定 GEMINI_API_KEY，已完成本地特徵引擎日誌惡意行徑解析。';
+      }
+    }
+
+    return res.json(analysis);
   });
 
   // 7. Zero-Trust Identity & Access Control

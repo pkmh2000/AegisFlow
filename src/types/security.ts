@@ -147,6 +147,7 @@ export interface RealtimeAlertItem {
 
 export interface ProtectionSettings {
   preset: 'home' | 'strict_zerotrust' | 'web3_guardian';
+  defaultPlatform: PlatformSource;
   autoBlockMaliciousLinks: boolean;
   mlTrafficInspection: boolean;
   walletSignatureGuard: boolean;
@@ -221,3 +222,35 @@ export interface SecurityDrillScenario {
   }[];
   remediationTip: string;
 }
+
+export interface NetworkLogFinding {
+  lineNumber: number;
+  rawLine: string;
+  sourceIp: string;
+  target: string;
+  attackType: string;
+  category: ThreatCategory;
+  severity: ThreatSeverity;
+  riskScore: number;
+  signals: string[];
+  logId?: string;
+}
+
+export interface NetworkLogAnalysisResult {
+  totalLines: number;
+  parsedEntries: number;
+  maliciousCount: number;
+  cleanCount: number;
+  detectedFormat: 'nginx_apache' | 'firewall_syslog' | 'dns_query' | 'json_lines' | 'mixed_text';
+  topAttackerIps: Array<{ ip: string; count: number; maxRisk: number }>;
+  findings: NetworkLogFinding[];
+  ingestedLogs: ThreatLogEntry[];
+  aiSummary?: {
+    incidentOverview: string;
+    attackChain: string;
+    recommendedBlockRules: string[];
+  };
+  aiError?: string;
+  analyzedAt: string;
+}
+

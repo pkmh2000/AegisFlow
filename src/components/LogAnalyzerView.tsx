@@ -1,26 +1,41 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Bell,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Download,
   FileSpreadsheet,
+  FileText,
+  HelpCircle,
   Loader2,
   Search,
   Send,
+  ShieldAlert,
   Sparkles,
+  Upload,
 } from 'lucide-react';
+import { DEVICE_LOG_GUIDES } from '../data/drillsAndGuides';
 import type {
   AIRemediationPlan,
   AlertChannelConfig,
+  NetworkLogAnalysisResult,
+  PlatformSource,
   ThreatLogEntry,
   ThreatSeverity,
 } from '../types/security';
+import { analyzeRawNetworkLogs } from '../utils/networkLogAnalyzer';
 import { getActionLabel, getCategoryLabel, SeverityText } from './SeverityLabel';
 
 interface LogAnalyzerViewProps {
   logs: ThreatLogEntry[];
   selectedLog: ThreatLogEntry | null;
+  selectedPlatform: PlatformSource;
   onSelectLog: (log: ThreatLogEntry) => void;
   onUpdateLogRemediation: (logId: string, plan: AIRemediationPlan) => void;
+  onRefreshLogs: () => void;
+  onBatchAddLocalLogs: (entries: ThreatLogEntry[]) => void;
   alertChannels: AlertChannelConfig[];
   isOnline: boolean;
   onNotifyToast: (
@@ -31,11 +46,22 @@ interface LogAnalyzerViewProps {
   ) => void;
 }
 
+const FORMAT_LABELS: Record<NetworkLogAnalysisResult['detectedFormat'], string> = {
+  nginx_apache: 'Nginx / Apache HTTP 日誌',
+  firewall_syslog: '防火牆 / Syslog 日誌',
+  dns_query: 'DNS 查詢日誌',
+  json_lines: 'JSON 結構化日誌',
+  mixed_text: '通用文字 / 混合網路日誌',
+};
+
 export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
   logs,
   selectedLog,
+  selectedPlatform,
   onSelectLog,
   onUpdateLogRemediation,
+  onRefreshLogs,
+  onBatchAddLocalLogs,
   alertChannels,
   isOnline,
   onNotifyToast,
@@ -46,6 +72,16 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [dispatching, setDispatching] = useState(false);
+
+  // Raw network log analyzer state
+  const [rawPanelOpen, setRawPanelOpen] = useState(true);
+  const [showLogGuide, setShowLogGuide] = useState(false);
+  const [rawLogText, setRawLogText] = useState('');
+  const [rawDeepAi, setRawDeepAi] = useState(true);
+  const [rawAnalyzing, setRawAnalyzing] = useState(false);
+  const [rawError, setRawError] = useState('');
+  const [rawResult, setRawResult] = useState<NetworkLogAnalysisResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredLogs = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -192,6 +228,90 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleLogFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRawError('');
+    if (file.size > 500_000) {
+      setRawError('日誌檔案大小超過 500 KB，請擷取關鍵區段後再匯入分析。');
+      e.target.value = '';
+      return;
+    }
+    try {
+      const text = await file.text();
+      setRawLogText(text);
+      setRawPanelOpen(true);
+    } catch {
+      setRawError('無法讀取此日誌檔案內容。');
+    }
+    e.target.value = '';
+  };
+
+  const handleAnalyzeRawLog = async () => {
+    if (!rawLogText.trim()) {
+      setRawError('請貼上網路日誌內容，或匯入 .log / .txt / .json / .csv 檔案。');
+      return;
+    }
+    setRawError('');
+    setRawAnalyzing(true);
+    try {
+      let result: NetworkLogAnalysisResult | null = null;
+
+      if (isOnline) {
+        const resp = await fetch('/api/v1/logs/analyze-raw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rawLog: rawLogText,
+            platform: selectedPlatform,
+            deepAi: rawDeepAi,
+          }),
+        });
+        const contentType = resp.headers.get('content-type') || '';
+        if (resp.status !== 404 && contentType.includes('application/json')) {
+          const data = await resp.json();
+          if (!resp.ok) {
+            throw new Error(data.error || '網路日誌分析失敗');
+          }
+          result = data as NetworkLogAnalysisResult;
+          onRefreshLogs();
+        }
+      }
+
+      if (!result) {
+        // Offline or static-host local analyzer fallback
+        result = analyzeRawNetworkLogs(rawLogText, selectedPlatform, 40);
+        if (!isOnline) {
+          result.aiError = '目前為離線或純靜態模式，已完成本機行為規則與 ML 熵值分析。';
+        }
+        if (result.ingestedLogs.length > 0) {
+          onBatchAddLocalLogs(result.ingestedLogs);
+        }
+      }
+
+      setRawResult(result);
+      if (result.ingestedLogs.length > 0) {
+        onSelectLog(result.ingestedLogs[0]);
+      }
+
+      if (result.maliciousCount > 0) {
+        const top = result.findings[0];
+        onNotifyToast(
+          `日誌分析發現 ${result.maliciousCount} 筆惡意行徑`,
+          `主要威脅：${top?.attackType ?? '異常存取'}（來源 ${top?.sourceIp ?? '未知'}）`,
+          top?.severity ?? 'high',
+          { logId: top?.logId, target: top?.target }
+        );
+      } else {
+        onNotifyToast('日誌分析完成', `共掃描 ${result.totalLines} 行紀錄，未發現惡意攻擊特徵。`, 'nominal');
+      }
+    } catch (err) {
+      setRawError(err instanceof Error ? err.message : '分析網路日誌時發生錯誤');
+    } finally {
+      setRawAnalyzing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -223,6 +343,279 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Raw Network Log Batch Malicious Behavior Analyzer */}
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <div className="flex items-start gap-2.5">
+            <FileText className="mt-0.5 h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" aria-hidden="true" />
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                網路日誌惡意行徑批量分析（支援 HTTP / 防火牆 / DNS / Syslog / JSON）
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                自動識別 SQL 注入、遠端指令執行 (RCE)、C2 反連、密碼爆破、埠口掃描、DNS/DGA 隱蔽通道與異常外傳，命中紀錄將同步歸檔至下方溯源清單。
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setRawPanelOpen((o) => !o)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <span>{rawPanelOpen ? '收合分析器' : '展開日誌分析器'}</span>
+            {rawPanelOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+
+        {rawPanelOpen && (
+          <div className="border-t border-slate-100 px-5 py-4 dark:border-slate-800 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".log,.txt,.csv,.json,.jsonl,.ndjson"
+                  onChange={handleLogFileUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer whitespace-nowrap"
+                >
+                  <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>上傳日誌檔 (.log / .txt / .json / .ndjson)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLogGuide((s) => !s)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100/70 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300 cursor-pointer whitespace-nowrap"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{showLogGuide ? '收合裝置日誌取得教學' : '各裝置日誌如何取得？'}</span>
+                </button>
+                {rawLogText && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRawLogText('');
+                      setRawResult(null);
+                      setRawError('');
+                    }}
+                    className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    清除內容
+                  </button>
+                )}
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rawDeepAi}
+                  onChange={(e) => setRawDeepAi(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                />
+                <span>啟用 AI 攻擊鏈彙整與防火牆規則建議</span>
+              </label>
+            </div>
+
+            {showLogGuide && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 dark:border-blue-900/60 dark:bg-blue-950/20 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    各裝置網路日誌匯出取得方式（單檔上限 500 KB，支援貼上近期文字片段）
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {DEVICE_LOG_GUIDES.map((guide) => (
+                    <div
+                      key={guide.id}
+                      className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                          {guide.device}
+                        </span>
+                        <span className="font-mono text-[10px] text-blue-700 dark:text-blue-400">
+                          {guide.format}
+                        </span>
+                      </div>
+                      {guide.commandOrPath && (
+                        <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-800 break-all dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+                          {guide.commandOrPath}
+                        </div>
+                      )}
+                      <ul className="space-y-1 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                        {guide.steps.map((step, i) => (
+                          <li key={i}>• {step}</li>
+                        ))}
+                      </ul>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 pt-1.5 dark:border-slate-800">
+                        {guide.note}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <textarea
+              rows={5}
+              value={rawLogText}
+              onChange={(e) => setRawLogText(e.target.value)}
+              placeholder="在此貼上欲檢驗的原始網路日誌（每行一筆，支援 Nginx/Apache Access Log、iptables/UFW 防火牆紀錄、DNS Query Log、Syslog 或 JSON Lines）..."
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            />
+
+            {rawError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+                {rawError}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                靜態文本解析：僅分析日誌文字與行為特徵，不會對日誌內的 IP 或網址主動發起連線。
+              </span>
+              <button
+                type="button"
+                disabled={rawAnalyzing}
+                onClick={handleAnalyzeRawLog}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                {rawAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+                <span>{rawAnalyzing ? '正在解析日誌行為特徵...' : '分析日誌內惡意行徑'}</span>
+              </button>
+            </div>
+
+            {rawResult && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 space-y-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                    <div className="text-slate-500 dark:text-slate-400">掃描有效行數</div>
+                    <div className="mt-1 font-mono tabular-nums text-lg font-bold text-slate-900 dark:text-slate-50">
+                      {rawResult.totalLines}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                    <div className="text-slate-500 dark:text-slate-400">識別惡意行徑</div>
+                    <div
+                      className={`mt-1 font-mono tabular-nums text-lg font-bold ${
+                        rawResult.maliciousCount > 0
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-emerald-600 dark:text-emerald-400'
+                      }`}
+                    >
+                      {rawResult.maliciousCount}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                    <div className="text-slate-500 dark:text-slate-400">正常安全行數</div>
+                    <div className="mt-1 font-mono tabular-nums text-lg font-bold text-slate-900 dark:text-slate-50">
+                      {rawResult.cleanCount}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                    <div className="text-slate-500 dark:text-slate-400">自動辨識格式</div>
+                    <div className="mt-1 text-xs font-semibold text-slate-900 dark:text-slate-100">
+                      {FORMAT_LABELS[rawResult.detectedFormat]}
+                    </div>
+                  </div>
+                </div>
+
+                {rawResult.maliciousCount === 0 ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3.5 py-2.5 text-xs text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <span>此批日誌未偵測到 SQLi、RCE、C2 反連、暴力破解或釣魚異常行為特徵。</span>
+                  </div>
+                ) : (
+                  <>
+                    {rawResult.topAttackerIps.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">高風險來源 IP：</span>
+                        {rawResult.topAttackerIps.map((item) => (
+                          <span
+                            key={item.ip}
+                            className="rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          >
+                            {item.ip} ({item.count} 次 · 峰值 {item.maxRisk})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="max-h-64 overflow-y-auto divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+                      {rawResult.findings.map((f) => (
+                        <button
+                          key={`${f.lineNumber}-${f.target}`}
+                          type="button"
+                          onClick={() => {
+                            const matched =
+                              logs.find((l) => l.id === f.logId) ||
+                              rawResult.ingestedLogs.find((l) => l.id === f.logId);
+                            if (matched) onSelectLog(matched);
+                          }}
+                          className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-2">
+                              <SeverityText severity={f.severity} />
+                              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                第 {f.lineNumber} 行 · {f.attackType}
+                              </span>
+                            </div>
+                            <span className="font-mono tabular-nums text-slate-600 dark:text-slate-400">
+                              {f.sourceIp} · 風險 {f.riskScore}
+                            </span>
+                          </div>
+                          <div className="mt-1 truncate font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                            {f.rawLine}
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-red-700 dark:text-red-400">
+                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                            <span>{f.signals.join('；')}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {rawResult.aiSummary ? (
+                  <div className="rounded-lg border border-blue-200 bg-white p-3.5 dark:border-blue-900/50 dark:bg-slate-900 space-y-2 text-xs">
+                    <div className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-400">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>AI 攻擊鏈關聯分析與防火牆建議</span>
+                    </div>
+                    <p className="text-slate-800 dark:text-slate-200 leading-relaxed">
+                      {rawResult.aiSummary.incidentOverview}
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      <span className="font-semibold">推測攻擊鏈：</span>
+                      {rawResult.aiSummary.attackChain}
+                    </p>
+                    <div>
+                      <div className="font-semibold text-slate-700 dark:text-slate-300 mb-1">建議阻斷規則：</div>
+                      <ul className="space-y-1 font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                        {rawResult.aiSummary.recommendedBlockRules.map((rule, idx) => (
+                          <li key={idx}>• {rule}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ) : rawResult.aiError ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                    {rawResult.aiError}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Filter Bar */}
       <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center">
