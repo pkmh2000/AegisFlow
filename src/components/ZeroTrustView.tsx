@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Fingerprint, KeyRound, Lock, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Fingerprint, KeyRound, Lock, ShieldCheck, X } from 'lucide-react';
 import type { ZeroTrustPolicy, ZeroTrustSession } from '../types/security';
 
 interface ZeroTrustViewProps {
@@ -178,13 +178,26 @@ export const ZeroTrustView: React.FC<ZeroTrustViewProps> = ({
                 <label htmlFor="zt-device" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
                   端點裝置識別名稱
                 </label>
-                <input
-                  id="zt-device"
-                  type="text"
-                  value={deviceId}
-                  onChange={(e) => setDeviceId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                />
+                <div className="relative">
+                  <input
+                    id="zt-device"
+                    type="text"
+                    value={deviceId}
+                    onChange={(e) => setDeviceId(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-3 pr-9 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                  {deviceId && (
+                    <button
+                      type="button"
+                      onClick={() => setDeviceId('')}
+                      aria-label="清除端點裝置識別名稱"
+                      title="清除輸入內容"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -214,15 +227,28 @@ export const ZeroTrustView: React.FC<ZeroTrustViewProps> = ({
                   <label htmlFor="zt-totp" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
                     6 位數動態驗證碼
                   </label>
-                  <input
-                    id="zt-totp"
-                    type="text"
-                    maxLength={6}
-                    value={totpCode}
-                    onChange={(e) => setTotpCode(e.target.value)}
-                    placeholder="輸入 6 位數驗證碼"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm tracking-widest text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
+                  <div className="relative">
+                    <input
+                      id="zt-totp"
+                      type="text"
+                      maxLength={6}
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value)}
+                      placeholder="輸入 6 位數驗證碼"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-3 pr-9 font-mono text-sm tracking-widest text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                    {totpCode && (
+                      <button
+                        type="button"
+                        onClick={() => setTotpCode('')}
+                        aria-label="清除動態驗證碼"
+                        title="清除輸入內容"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

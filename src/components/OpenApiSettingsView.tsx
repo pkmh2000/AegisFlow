@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Check, Code2, Copy, Key, Play, Settings2, Volume2 } from 'lucide-react';
+import { Bell, Check, Code2, Copy, Key, Play, Settings2, Volume2, X } from 'lucide-react';
 import type {
   AlertChannelConfig,
   ProtectionSettings,
@@ -299,13 +299,26 @@ const verdict = await res.json();`;
                 </div>
 
                 {(ch.channel === 'Slack' || ch.channel === 'Discord') && (
-                  <input
-                    type="url"
-                    value={ch.webhookUrl || ''}
-                    onChange={(e) => updateWebhookUrl(ch.id, e.target.value)}
-                    placeholder={`輸入 ${ch.channel} HTTPS Webhook 網址（系統自動阻擋內網 SSRF 位址）`}
-                    className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                  />
+                  <div className="relative">
+                    <input
+                      type="url"
+                      value={ch.webhookUrl || ''}
+                      onChange={(e) => updateWebhookUrl(ch.id, e.target.value)}
+                      placeholder={`輸入 ${ch.channel} HTTPS Webhook 網址（系統自動阻擋內網 SSRF 位址）`}
+                      className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-2.5 pr-8 font-mono text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                    {ch.webhookUrl && (
+                      <button
+                        type="button"
+                        onClick={() => updateWebhookUrl(ch.id, '')}
+                        aria-label={`清除 ${ch.channel} Webhook 網址`}
+                        title="清除輸入內容"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -382,13 +395,26 @@ const verdict = await res.json();`;
           </div>
 
           <form onSubmit={handleIssueToken} className="flex flex-col gap-2 sm:flex-row">
-            <input
-              type="text"
-              value={newTokenName}
-              onChange={(e) => setNewTokenName(e.target.value)}
-              placeholder="系統整合名稱（例如 Wazuh SIEM / 企業 Gateway）"
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-            />
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={newTokenName}
+                onChange={(e) => setNewTokenName(e.target.value)}
+                placeholder="系統整合名稱（例如 Wazuh SIEM / 企業 Gateway）"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-3 pr-9 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              />
+              {newTokenName && (
+                <button
+                  type="button"
+                  onClick={() => setNewTokenName('')}
+                  aria-label="清除系統整合名稱"
+                  title="清除輸入內容"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
             <select
               aria-label="API Token 權限範圍"
               value={newTokenScope}

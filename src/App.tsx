@@ -745,6 +745,7 @@ export default function App() {
           {activeTab === 'scanner' && (
             <ScannerView
               initialUrl={quickScanUrl}
+              onClearInitialUrl={() => setQuickScanUrl('')}
               selectedPlatform={settings.defaultPlatform}
               onSelectPlatform={(defaultPlatform) =>
                 handleUpdateSettings({ ...settings, defaultPlatform })

@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Sparkles,
   Wallet,
+  X,
 } from 'lucide-react';
 import type { PlatformSource, ThreatLogEntry, ThreatSeverity, URLScanResult, WalletScanResult } from '../types/security';
 import { scanUrlLocally, scanWalletLocally } from '../utils/clientScanner';
@@ -17,6 +18,7 @@ import { getCategoryLabel, SeverityText } from './SeverityLabel';
 
 interface ScannerViewProps {
   initialUrl?: string;
+  onClearInitialUrl?: () => void;
   selectedPlatform: PlatformSource;
   onSelectPlatform: (platform: PlatformSource) => void;
   isOnline: boolean;
@@ -32,6 +34,7 @@ interface ScannerViewProps {
 
 export const ScannerView: React.FC<ScannerViewProps> = ({
   initialUrl = '',
+  onClearInitialUrl,
   selectedPlatform,
   onSelectPlatform,
   isOnline,
@@ -234,14 +237,34 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             </h2>
 
             <div className="space-y-1.5">
-              <label htmlFor="url-input" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                目標網址 (HTTP / HTTPS)
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="url-input" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  目標網址 (HTTP / HTTPS)
+                </label>
+                {urlInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUrlInput('');
+                      setUrlError('');
+                      onClearInitialUrl?.();
+                    }}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>清除網址</span>
+                  </button>
+                )}
+              </div>
               <textarea
                 id="url-input"
                 rows={3}
                 value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setUrlInput(val);
+                  if (!val) onClearInitialUrl?.();
+                }}
                 placeholder="https://example.com/..."
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 focus:border-blue-600 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
               />
@@ -446,27 +469,56 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               <label htmlFor="dapp-url" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
                 dApp 來源網址
               </label>
-              <input
-                id="dapp-url"
-                type="text"
-                value={dappUrl}
-                onChange={(e) => setDappUrl(e.target.value)}
-                placeholder="https://app.example.com"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              />
+              <div className="relative">
+                <input
+                  id="dapp-url"
+                  type="text"
+                  value={dappUrl}
+                  onChange={(e) => setDappUrl(e.target.value)}
+                  placeholder="https://app.example.com"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-3 pr-9 font-mono text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+                {dappUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDappUrl('');
+                      setWalletError('');
+                    }}
+                    aria-label="清除 dApp 來源網址"
+                    title="清除輸入內容"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="space-y-1.5">
               <label htmlFor="contract-addr" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
                 授權目標合約地址 (Spender)
               </label>
-              <input
-                id="contract-addr"
-                type="text"
-                value={contractAddress}
-                onChange={(e) => setContractAddress(e.target.value)}
-                placeholder="0x..."
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              />
+              <div className="relative">
+                <input
+                  id="contract-addr"
+                  type="text"
+                  value={contractAddress}
+                  onChange={(e) => setContractAddress(e.target.value)}
+                  placeholder="0x..."
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-3 pr-9 font-mono text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+                {contractAddress && (
+                  <button
+                    type="button"
+                    onClick={() => setContractAddress('')}
+                    aria-label="清除合約地址"
+                    title="清除輸入內容"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="space-y-1.5">
               <label htmlFor="method-sig" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
@@ -486,9 +538,21 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
               </select>
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="calldata-input" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                交易 Calldata (選填)
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="calldata-input" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  交易 Calldata (選填)
+                </label>
+                {calldata && (
+                  <button
+                    type="button"
+                    onClick={() => setCalldata('')}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>清除內容</span>
+                  </button>
+                )}
+              </div>
               <textarea
                 id="calldata-input"
                 rows={2}

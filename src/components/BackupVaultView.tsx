@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { CheckCircle2, Download, HardDrive, Lock, ShieldCheck, Upload } from 'lucide-react';
+import { CheckCircle2, Download, HardDrive, Lock, ShieldCheck, Upload, X } from 'lucide-react';
 import type {
   AlertChannelConfig,
   BackupSnapshotMeta,
@@ -162,14 +162,27 @@ export const BackupVaultView: React.FC<BackupVaultViewProps> = ({
             <label htmlFor="vault-pass" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
               設定加密保護密碼 (至少 8 字元，系統不會儲存此密碼)
             </label>
-            <input
-              id="vault-pass"
-              type="password"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              placeholder="輸入高強度加密密碼..."
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-            />
+            <div className="relative">
+              <input
+                id="vault-pass"
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder="輸入高強度加密密碼..."
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-3 pr-9 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              />
+              {passphrase && (
+                <button
+                  type="button"
+                  onClick={() => setPassphrase('')}
+                  aria-label="清除加密保護密碼"
+                  title="清除輸入內容"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
           </div>
 
           <button
@@ -199,14 +212,27 @@ export const BackupVaultView: React.FC<BackupVaultViewProps> = ({
             <label htmlFor="restore-pass" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
               備份解密密碼
             </label>
-            <input
-              id="restore-pass"
-              type="password"
-              value={restorePassphrase}
-              onChange={(e) => setRestorePassphrase(e.target.value)}
-              placeholder="輸入建立快照時設定的密碼..."
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-            />
+            <div className="relative">
+              <input
+                id="restore-pass"
+                type="password"
+                value={restorePassphrase}
+                onChange={(e) => setRestorePassphrase(e.target.value)}
+                placeholder="輸入建立快照時設定的密碼..."
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-3 pr-9 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              />
+              {restorePassphrase && (
+                <button
+                  type="button"
+                  onClick={() => setRestorePassphrase('')}
+                  aria-label="清除備份解密密碼"
+                  title="清除輸入內容"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
           </div>
 
           <input

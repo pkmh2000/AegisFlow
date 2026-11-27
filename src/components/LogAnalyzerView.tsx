@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   Sparkles,
   Upload,
+  X,
 } from 'lucide-react';
 import { DEVICE_LOG_GUIDES } from '../data/drillsAndGuides';
 import type {
@@ -404,9 +405,10 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
                       setRawResult(null);
                       setRawError('');
                     }}
-                    className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
                   >
-                    清除內容
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>清除內容</span>
                   </button>
                 )}
               </div>
@@ -626,8 +628,19 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜尋網址、事件 ID、來源 IP 或摘要..."
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-9 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="清除搜尋關鍵字"
+              title="清除輸入內容"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <select

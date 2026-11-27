@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Wallet,
+  X,
 } from 'lucide-react';
 import type {
   BackupSnapshotMeta,
@@ -197,8 +198,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               value={quickUrl}
               onChange={(e) => setQuickUrl(e.target.value)}
               placeholder="貼上欲檢測的網址或 dApp 連結進行 ML + AI 威脅特徵分析（例如 https://...）"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-9 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-500"
             />
+            {quickUrl && (
+              <button
+                type="button"
+                onClick={() => setQuickUrl('')}
+                aria-label="清除檢測網址"
+                title="清除輸入內容"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
           </div>
           <button
             type="submit"
