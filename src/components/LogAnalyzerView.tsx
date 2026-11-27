@@ -14,6 +14,7 @@ import {
   Send,
   ShieldAlert,
   Sparkles,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react';
@@ -37,6 +38,8 @@ interface LogAnalyzerViewProps {
   onUpdateLogRemediation: (logId: string, plan: AIRemediationPlan) => void;
   onRefreshLogs: () => void;
   onBatchAddLocalLogs: (entries: ThreatLogEntry[]) => void;
+  onDeleteLogs: (ids: string[]) => Promise<void> | void;
+  onClearLogs: (scope: 'all' | 'safe_only' | 'older_7d') => Promise<void> | void;
   alertChannels: AlertChannelConfig[];
   isOnline: boolean;
   onNotifyToast: (
@@ -63,6 +66,8 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
   onUpdateLogRemediation,
   onRefreshLogs,
   onBatchAddLocalLogs,
+  onDeleteLogs,
+  onClearLogs,
   alertChannels,
   isOnline,
   onNotifyToast,
@@ -73,6 +78,9 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [dispatching, setDispatching] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
 
   // Raw network log analyzer state
   const [rawPanelOpen, setRawPanelOpen] = useState(true);
@@ -103,6 +111,68 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
   }, [logs, searchQuery, severityFilter, categoryFilter]);
 
   const activeLog = selectedLog || filteredLogs[0] || null;
+
+  const validCheckedIds = useMemo(() => {
+    const existing = new Set(logs.map((l) => l.id));
+    return checkedIds.filter((id) => existing.has(id));
+  }, [logs, checkedIds]);
+
+  const filteredIds = useMemo(() => filteredLogs.map((l) => l.id), [filteredLogs]);
+  const allFilteredChecked =
+    filteredIds.length > 0 && filteredIds.every((id) => validCheckedIds.includes(id));
+
+  const toggleCheckId = (id: string) => {
+    setConfirmBatchDelete(false);
+    setCheckedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllFiltered = () => {
+    setConfirmBatchDelete(false);
+    if (allFilteredChecked) {
+      const filteredSet = new Set(filteredIds);
+      setCheckedIds((prev) => prev.filter((id) => !filteredSet.has(id)));
+    } else {
+      setCheckedIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  };
+
+  const handleDeleteSingleLog = async (log: ThreatLogEntry) => {
+    setConfirmBatchDelete(false);
+    setCheckedIds((prev) => prev.filter((id) => id !== log.id));
+    await onDeleteLogs([log.id]);
+    onNotifyToast('已刪除日誌紀錄', `已移除事件 ${log.id}（${log.target}）。`);
+  };
+
+  const handleDeleteCheckedLogs = async () => {
+    if (validCheckedIds.length === 0) return;
+    const count = validCheckedIds.length;
+    const toDelete = [...validCheckedIds];
+    setCheckedIds([]);
+    setConfirmBatchDelete(false);
+    await onDeleteLogs(toDelete);
+    onNotifyToast('已批次刪除日誌紀錄', `共移除 ${count} 筆選取的威脅紀錄。`);
+  };
+
+  const safeLogsCount = useMemo(
+    () => logs.filter((l) => l.category === 'safe' || l.severity === 'nominal').length,
+    [logs]
+  );
+
+  const handleClearByScope = async (scope: 'all' | 'safe_only' | 'older_7d') => {
+    setConfirmClearAll(false);
+    setConfirmBatchDelete(false);
+    setCheckedIds([]);
+    await onClearLogs(scope);
+    if (scope === 'all') {
+      onNotifyToast('已清空全部日誌', '所有威脅分析與掃描歸檔紀錄皆已清除。');
+    } else if (scope === 'safe_only') {
+      onNotifyToast('已清理正常流量日誌', '已刪除安全正常紀錄，保留異常與威脅事件供溯源。');
+    } else {
+      onNotifyToast('已清理 7 天前日誌', '超過 7 天的歷史紀錄已清除。');
+    }
+  };
 
   const handleGenerateAiPatch = async (log: ThreatLogEntry) => {
     if (!isOnline) {
@@ -326,6 +396,48 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {safeLogsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleClearByScope('safe_only')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+              <span>清除正常紀錄 ({safeLogsCount})</span>
+            </button>
+          )}
+          {logs.length > 0 && (
+            !confirmClearAll ? (
+              <button
+                type="button"
+                onClick={() => setConfirmClearAll(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50/80 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>清空全部日誌</span>
+              </button>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs dark:border-red-800 dark:bg-red-950/50">
+                <span className="font-semibold text-red-700 dark:text-red-300">
+                  清空全部 {logs.length} 筆？
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleClearByScope('all')}
+                  className="rounded bg-red-600 px-2 py-0.5 font-medium text-white hover:bg-red-700 cursor-pointer"
+                >
+                  確認
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearAll(false)}
+                  className="rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
+                >
+                  取消
+                </button>
+              </div>
+            )
+          )}
           <button
             type="button"
             onClick={() => exportArchive('csv')}
@@ -495,6 +607,19 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
 
             {rawResult && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    日誌惡意行徑掃描結果摘要
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRawResult(null)}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-200/70 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>清除分析結果</span>
+                  </button>
+                </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
                   <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                     <div className="text-slate-500 dark:text-slate-400">掃描有效行數</div>
@@ -674,8 +799,69 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Logs Table */}
         <section className="lg:col-span-7 rounded-xl border border-slate-200 bg-white overflow-hidden dark:border-slate-800 dark:bg-slate-900">
-          <div className="border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">
-            符合條件紀錄：{filteredLogs.length} 筆
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <div className="flex items-center gap-3">
+              {filteredLogs.length > 0 && (
+                <label className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredChecked}
+                    onChange={toggleSelectAllFiltered}
+                    aria-label="全選目前篩選日誌"
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                  />
+                  <span>全選</span>
+                </label>
+              )}
+              <span>
+                符合條件紀錄：{filteredLogs.length} 筆
+                {validCheckedIds.length > 0 ? ` · 已選 ${validCheckedIds.length} 筆` : ''}
+              </span>
+            </div>
+
+            {validCheckedIds.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {!confirmBatchDelete ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmBatchDelete(true)}
+                      className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300 cursor-pointer whitespace-nowrap"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>刪除所選 ({validCheckedIds.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCheckedIds([])}
+                      className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      取消選取
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-red-700 dark:text-red-300 font-semibold">
+                      確定刪除 {validCheckedIds.length} 筆？
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDeleteCheckedLogs}
+                      className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 cursor-pointer"
+                    >
+                      確認刪除
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmBatchDelete(false)}
+                      className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
+                    >
+                      取消
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           {filteredLogs.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -685,41 +871,62 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
             <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[560px] overflow-y-auto">
               {filteredLogs.map((log) => {
                 const isSelected = activeLog?.id === log.id;
+                const isChecked = validCheckedIds.includes(log.id);
                 return (
-                  <button
+                  <div
                     key={log.id}
-                    type="button"
-                    onClick={() => {
-                      setAiError('');
-                      onSelectLog(log);
-                    }}
-                    className={`w-full px-4 py-3.5 text-left transition-colors cursor-pointer ${
+                    className={`flex items-start gap-3 px-4 py-3.5 transition-colors ${
                       isSelected
                         ? 'bg-blue-50/70 dark:bg-blue-950/30'
                         : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <SeverityText severity={log.severity} />
-                        <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                          {log.id} · {log.platform}
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleCheckId(log.id)}
+                      aria-label={`選取日誌 ${log.id}`}
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 shrink-0 cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAiError('');
+                        onSelectLog(log);
+                      }}
+                      className="min-w-0 flex-1 text-left cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <SeverityText severity={log.severity} />
+                          <span className="truncate font-mono text-xs text-slate-500 dark:text-slate-400">
+                            {log.id} · {log.platform}
+                          </span>
+                        </div>
+                        <span className="font-mono tabular-nums text-xs font-medium text-slate-700 dark:text-slate-300 shrink-0">
+                          {getActionLabel(log.action)} · {log.riskScore}
                         </span>
                       </div>
-                      <span className="font-mono tabular-nums text-xs font-medium text-slate-700 dark:text-slate-300">
-                        {getActionLabel(log.action)} · {log.riskScore}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 truncate font-mono text-xs font-medium text-slate-900 dark:text-slate-100">
-                      {log.target}
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span className="truncate">{getCategoryLabel(log.category)} · {log.sourceIp}</span>
-                      <span className="font-mono tabular-nums shrink-0 ml-2">
-                        {new Date(log.timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  </button>
+                      <div className="mt-1.5 truncate font-mono text-xs font-medium text-slate-900 dark:text-slate-100">
+                        {log.target}
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                        <span className="truncate">{getCategoryLabel(log.category)} · {log.sourceIp}</span>
+                        <span className="font-mono tabular-nums shrink-0 ml-2">
+                          {new Date(log.timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSingleLog(log)}
+                      aria-label={`刪除此筆日誌 ${log.id}`}
+                      title="刪除此筆日誌"
+                      className="mt-0.5 rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/40 dark:hover:text-red-400 shrink-0 cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -735,7 +942,7 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
           ) : (
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3.5 dark:border-slate-800">
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <SeverityText severity={activeLog.severity} />
                     <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
@@ -746,9 +953,19 @@ export const LogAnalyzerView: React.FC<LogAnalyzerViewProps> = ({
                     {activeLog.target}
                   </div>
                 </div>
-                <span className="font-mono tabular-nums text-lg font-bold text-slate-900 dark:text-slate-50 shrink-0">
-                  {activeLog.riskScore}/100
-                </span>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <span className="font-mono tabular-nums text-lg font-bold text-slate-900 dark:text-slate-50">
+                    {activeLog.riskScore}/100
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSingleLog(activeLog)}
+                    className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50/70 px-2 py-0.5 text-[11px] font-medium text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 cursor-pointer"
+                  >
+                    <Trash2 className="h-3 w-3" aria-hidden="true" />
+                    <span>刪除此紀錄</span>
+                  </button>
+                </div>
               </div>
 
               <div className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">

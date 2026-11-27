@@ -951,6 +951,82 @@ async function createServer() {
     });
   });
 
+  app.post('/api/v1/logs/delete', (req, res) => {
+    const rawIds = req.body?.ids;
+    if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > 500) {
+      return res.status(400).json({ error: '請提供欲刪除的日誌 ID 陣列（1 至 500 筆）。' });
+    }
+    const idSet = new Set(rawIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0));
+    if (idSet.size === 0) {
+      return res.status(400).json({ error: '未提供有效的日誌 ID。' });
+    }
+
+    let deletedCount = 0;
+    for (let i = threatLogs.length - 1; i >= 0; i--) {
+      if (idSet.has(threatLogs[i].id)) {
+        threatLogs.splice(i, 1);
+        deletedCount++;
+      }
+    }
+
+    return res.json({
+      deletedCount,
+      remaining: threatLogs.length,
+    });
+  });
+
+  app.delete('/api/v1/logs/:id', (req, res) => {
+    const targetId = String(req.params.id || '').trim();
+    const idx = threatLogs.findIndex((l) => l.id === targetId);
+    if (idx === -1) {
+      return res.status(404).json({ error: '找不到指定的日誌紀錄。' });
+    }
+    threatLogs.splice(idx, 1);
+    return res.json({
+      deletedCount: 1,
+      remaining: threatLogs.length,
+    });
+  });
+
+  const handleBulkClearLogs = (scope: unknown, daysRaw: unknown) => {
+    const mode = typeof scope === 'string' ? scope : 'all';
+    const beforeCount = threatLogs.length;
+
+    if (mode === 'safe_only') {
+      for (let i = threatLogs.length - 1; i >= 0; i--) {
+        if (threatLogs[i].category === 'safe' || threatLogs[i].severity === 'nominal') {
+          threatLogs.splice(i, 1);
+        }
+      }
+    } else if (mode === 'older_than_days' || mode === 'older_7d') {
+      const days = typeof daysRaw === 'number' && daysRaw > 0 ? daysRaw : 7;
+      const cutoff = Date.now() - days * 86_400_000;
+      for (let i = threatLogs.length - 1; i >= 0; i--) {
+        const ts = Date.parse(threatLogs[i].timestamp);
+        if (Number.isFinite(ts) && ts < cutoff) {
+          threatLogs.splice(i, 1);
+        }
+      }
+    } else {
+      threatLogs.length = 0;
+    }
+
+    return {
+      deletedCount: beforeCount - threatLogs.length,
+      remaining: threatLogs.length,
+    };
+  };
+
+  app.post('/api/v1/logs/clear', (req, res) => {
+    const result = handleBulkClearLogs(req.body?.scope, req.body?.days);
+    return res.json(result);
+  });
+
+  app.delete('/api/v1/logs', (req, res) => {
+    const result = handleBulkClearLogs(req.query.scope, Number(req.query.days));
+    return res.json(result);
+  });
+
   app.post('/api/v1/logs', authenticateZeroTrustOrApi, (req, res) => {
     const { target, category = 'phishing', severity = 'medium', summary = '外部開源整合回報事件', platform = 'API' } = req.body || {};
     if (typeof target !== 'string' || !target.trim()) {

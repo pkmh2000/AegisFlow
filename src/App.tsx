@@ -247,6 +247,67 @@ export default function App() {
     [settings.offlineCacheEnabled]
   );
 
+  const handleDeleteLogs = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      setLogs((prev) => {
+        const updated = prev.filter((l) => !idSet.has(l.id));
+        offlineStore.saveLogs(updated);
+        return updated;
+      });
+      setSelectedLog((prev) => (prev && idSet.has(prev.id) ? null : prev));
+
+      if (isOnline) {
+        try {
+          await fetch('/api/v1/logs/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+          });
+        } catch {
+          // Static-host or transient offline fallback: local deletion already persisted
+        }
+      }
+    },
+    [isOnline]
+  );
+
+  const handleClearLogs = useCallback(
+    async (scope: 'all' | 'safe_only' | 'older_7d') => {
+      const cutoff = Date.now() - 7 * 86_400_000;
+      let remainingIds = new Set<string>();
+      setLogs((prev) => {
+        const updated =
+          scope === 'all'
+            ? []
+            : scope === 'safe_only'
+            ? prev.filter((l) => l.category !== 'safe' && l.severity !== 'nominal')
+            : prev.filter((l) => {
+                const ts = Date.parse(l.timestamp);
+                return !Number.isFinite(ts) || ts >= cutoff;
+              });
+        remainingIds = new Set(updated.map((l) => l.id));
+        offlineStore.saveLogs(updated);
+        return updated;
+      });
+      setSelectedLog((prev) => (prev && !remainingIds.has(prev.id) ? null : prev));
+
+      if (isOnline) {
+        try {
+          await fetch('/api/v1/logs/clear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scope, days: 7 }),
+          });
+        } catch {
+          // Static-host or transient offline fallback: local purge already persisted
+        }
+      }
+    },
+    [isOnline]
+  );
+
   useEffect(() => {
     refreshServerData();
   }, [refreshServerData]);
@@ -416,6 +477,19 @@ export default function App() {
       offlineStore.saveAlertFeed(next);
       return next;
     });
+  };
+
+  const handleDeleteAlert = (id: string) => {
+    setAlerts((prev) => {
+      const next = prev.filter((a) => a.id !== id);
+      offlineStore.saveAlertFeed(next);
+      return next;
+    });
+  };
+
+  const handleClearAllAlerts = () => {
+    setAlerts([]);
+    offlineStore.saveAlertFeed([]);
   };
 
   const handleInspectAlert = (alert: RealtimeAlertItem) => {
@@ -716,6 +790,8 @@ export default function App() {
           onMarkRead={handleMarkAlertRead}
           onMarkAllRead={handleMarkAllAlertsRead}
           onClearRead={handleClearReadAlerts}
+          onDeleteAlert={handleDeleteAlert}
+          onClearAll={handleClearAllAlerts}
           onInspectAlert={handleInspectAlert}
           onOpenScanner={handleOpenScannerFromAlerts}
         />
@@ -739,6 +815,10 @@ export default function App() {
               }}
               onNavigate={(tab) => setActiveTab(tab)}
               onSelectLog={(log) => setSelectedLog(log)}
+              onDeleteLog={(id) => {
+                void handleDeleteLogs([id]);
+                triggerToast('已刪除威脅動態紀錄', `已移除事件 ${id}。`);
+              }}
             />
           )}
 
@@ -766,6 +846,8 @@ export default function App() {
               onUpdateLogRemediation={handleUpdateLogRemediation}
               onRefreshLogs={refreshServerData}
               onBatchAddLocalLogs={handleBatchAddLocalLogs}
+              onDeleteLogs={handleDeleteLogs}
+              onClearLogs={handleClearLogs}
               alertChannels={alertChannels}
               isOnline={isOnline}
               onNotifyToast={triggerToast}

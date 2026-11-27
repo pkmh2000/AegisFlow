@@ -10,6 +10,7 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Trash2,
   Wallet,
   X,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ interface DashboardViewProps {
   onQuickScanUrl: (url: string) => void;
   onNavigate: (tab: 'scanner' | 'logs' | 'zerotrust' | 'backup' | 'drills' | 'api') => void;
   onSelectLog: (log: ThreatLogEntry) => void;
+  onDeleteLog?: (id: string) => void;
 }
 
 const PRESETS: { id: ProtectionSettings['preset']; label: string; desc: string }[] = [
@@ -61,6 +63,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onQuickScanUrl,
   onNavigate,
   onSelectLog,
+  onDeleteLog,
 }) => {
   const [quickUrl, setQuickUrl] = useState('');
   const [customizeMode, setCustomizeMode] = useState(false);
@@ -488,28 +491,43 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   ) : (
                     <div className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
                       {logs.slice(0, 4).map((log) => (
-                        <button
+                        <div
                           key={log.id}
-                          type="button"
-                          onClick={() => {
-                            onSelectLog(log);
-                            onNavigate('logs');
-                          }}
-                          className="w-full py-3 text-left hover:bg-slate-50/80 dark:hover:bg-slate-800/40 rounded-lg px-2 -mx-2 transition-colors cursor-pointer"
+                          className="flex items-start gap-2 py-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 rounded-lg px-2 -mx-2 transition-colors"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <SeverityText severity={log.severity} />
-                            <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                              {log.platform} · {getActionLabel(log.action)} · 風險 {log.riskScore}
-                            </span>
-                          </div>
-                          <div className="mt-1 truncate font-mono text-xs text-slate-800 dark:text-slate-200">
-                            {log.target}
-                          </div>
-                          <div className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
-                            {getCategoryLabel(log.category)} · {log.summary}
-                          </div>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onSelectLog(log);
+                              onNavigate('logs');
+                            }}
+                            className="min-w-0 flex-1 text-left cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <SeverityText severity={log.severity} />
+                              <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                                {log.platform} · {getActionLabel(log.action)} · 風險 {log.riskScore}
+                              </span>
+                            </div>
+                            <div className="mt-1 truncate font-mono text-xs text-slate-800 dark:text-slate-200">
+                              {log.target}
+                            </div>
+                            <div className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                              {getCategoryLabel(log.category)} · {log.summary}
+                            </div>
+                          </button>
+                          {onDeleteLog && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteLog(log.id)}
+                              aria-label={`刪除威脅動態 ${log.id}`}
+                              title="刪除此筆紀錄"
+                              className="mt-0.5 rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950/40 dark:hover:text-red-400 shrink-0 cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
                       ))}
                     </div>
                   )}

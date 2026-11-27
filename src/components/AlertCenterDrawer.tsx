@@ -24,6 +24,8 @@ interface AlertCenterDrawerProps {
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
   onClearRead: () => void;
+  onDeleteAlert: (id: string) => void;
+  onClearAll: () => void;
   onInspectAlert: (alert: RealtimeAlertItem) => void;
   onOpenScanner: () => void;
 }
@@ -37,6 +39,8 @@ export const AlertCenterDrawer: React.FC<AlertCenterDrawerProps> = ({
   onMarkRead,
   onMarkAllRead,
   onClearRead,
+  onDeleteAlert,
+  onClearAll,
   onInspectAlert,
   onOpenScanner,
 }) => {
@@ -223,6 +227,15 @@ export const AlertCenterDrawer: React.FC<AlertCenterDrawerProps> = ({
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
               <span>清除已讀</span>
             </button>
+            {alerts.length > 0 && (
+              <button
+                type="button"
+                onClick={onClearAll}
+                className="inline-flex items-center gap-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 cursor-pointer whitespace-nowrap"
+              >
+                <span>清空全部</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -290,6 +303,15 @@ export const AlertCenterDrawer: React.FC<AlertCenterDrawerProps> = ({
                         <span>已讀</span>
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => onDeleteAlert(alert.id)}
+                      aria-label={`刪除此警報 ${alert.title}`}
+                      title="刪除此警報"
+                      className="rounded border border-slate-200 bg-white p-1 text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-red-400 cursor-pointer"
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden="true" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => onInspectAlert(alert)}
