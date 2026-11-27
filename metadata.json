@@ -1,0 +1,6 @@
+{
+  "name": "AegisFlow",
+  "description": "自動化網路威脅監控、機器學習流量分析、Web3 錢包授權保護、零信任存取控管與抗勒索加密備份的跨平台 PWA 資安防禦系統。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
